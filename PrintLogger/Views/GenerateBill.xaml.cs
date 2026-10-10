@@ -1,10 +1,12 @@
-﻿
-using Microsoft.Office.Interop.Word;
-using PrintLogger.ViewModels;
+﻿using PrintLogger.ViewModels;
 using System;
 using System.Configuration;
 using System.Windows;
 using System.Windows.Controls;
+using System.IO;
+using System.Text;
+using System.Drawing;
+using Image = System.Drawing.Image;
 
 
 namespace PrintLogger.Views
@@ -23,7 +25,7 @@ namespace PrintLogger.Views
             this.PrintEnabled = false;
             this.objBillViewModel = new BillViewModel();
             this.DataContext = this.objBillViewModel;
-            if (this.objBillViewModel.Bill.Jobs.Count > 0) 
+            if (this.objBillViewModel.Bill.Jobs.Count > 0)
             {
                 this.PrintEnabled = true;
             }
@@ -36,150 +38,112 @@ namespace PrintLogger.Views
             try
             {
                 this.PrintEnabled = false;
-                Microsoft.Office.Interop.Word.Application winword = new Microsoft.Office.Interop.Word.Application();
-                winword.Visible = false;
-                object missing = System.Reflection.Missing.Value;
-                Microsoft.Office.Interop.Word.Document document = winword.Documents.Add();
-                //document.Paragraphs.SpaceAfter = 0;
-                foreach (Microsoft.Office.Interop.Word.Section wordSection in document.Sections)
+
+                string imagePath = ConfigurationManager.AppSettings.Get("billImageLogoPath");
+                string saveFolder = ConfigurationManager.AppSettings.Get("billSavePath");
+                if (string.IsNullOrWhiteSpace(saveFolder))
                 {
-                    Microsoft.Office.Interop.Word.Range footerRange = wordSection.Footers[Microsoft.Office.Interop.Word.WdHeaderFooterIndex.wdHeaderFooterPrimary].Range;
-                    footerRange.Font.ColorIndex = Microsoft.Office.Interop.Word.WdColorIndex.wdDarkRed;
-                    footerRange.Font.Size = 10;
-                    footerRange.ParagraphFormat.Alignment = Microsoft.Office.Interop.Word.WdParagraphAlignment.wdAlignParagraphCenter;
-                    footerRange.Text = "Ashoka Graphics";
+                    MessageBox.Show("Save path for bills is not configured.");
+                    return;
                 }
 
-                Range docRange = document.Range();
+                Directory.CreateDirectory(saveFolder);
+                string fileName = Path.Combine(saveFolder, bill.CustomerName + " " + Guid.NewGuid().ToString() + ".doc");
 
-                //string imagePath = @"E:\Study\AshokaGraphics\AshokaGraphics_v1.1\PrintLogger\PrintLogger\Images\ashoka1.jpg";
-                string imagePath = ConfigurationManager.AppSettings.Get("billImageLogoPath");
+                var sb = new StringBuilder();
+                sb.AppendLine("<!DOCTYPE html>");
+                sb.AppendLine("<html>");
+                sb.AppendLine("<head>");
+                sb.AppendLine("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />");
+                sb.AppendLine("<style>body{font-family:Verdana, Arial, Helvetica, sans-serif; font-size:10pt;} table{border-collapse:collapse;} td, th{border:1px solid #000;padding:4px;} .header{background:#ddd;font-weight:bold;text-align:center;} .total{background:#ddd;font-weight:bold;} img.logo{display:block;margin:0 auto;}</style>");
+                sb.AppendLine("</head>");
+                sb.AppendLine("<body>");
 
-                InlineShape autoScaledInlineShape = docRange.InlineShapes.AddPicture(imagePath);
-                float scaledWidth = autoScaledInlineShape.Width;
-                float scaledHeight = autoScaledInlineShape.Height;
-                autoScaledInlineShape.Delete();
-
-                Microsoft.Office.Interop.Word.Shape newShape = document.Shapes.AddShape(1, 0, 0, scaledWidth, scaledHeight);
-                newShape.Fill.UserPicture(imagePath);
-                InlineShape finalInlineShape = newShape.ConvertToInlineShape();
-                finalInlineShape.Line.Visible = Microsoft.Office.Core.MsoTriState.msoFalse;
-                finalInlineShape.Range.Cut();
-                docRange.Paste();
-                Microsoft.Office.Interop.Word.Paragraph para1 = document.Content.Paragraphs.Add();
-                Microsoft.Office.Interop.Word.Paragraph para2 = document.Content.Paragraphs.Add(ref missing);
-                para2.Range.Text = "Name: " + bill.CustomerName + "                                                                                               Date: " + bill.FromDate.Split(' ')[0].ToString() + " - " + bill.ToDate.Split(' ')[0].ToString(); 
-                // para2.Range.InsertParagraphAfter();
-                //para2.Range.Text = "Date: " + bill.FromDate.Split(' ')[0].ToString() + " - " + bill.ToDate.Split(' ')[0].ToString();
-                //para2.SpaceAfter = 0.0f;
-                para2.Range.InsertParagraphAfter();
-
-                Microsoft.Office.Interop.Word.Table firstTable = document.Tables.Add(para2.Range, bill.Jobs.Count + 2, 8, WdDefaultTableBehavior.wdWord8TableBehavior, ref missing);
-
-                firstTable.Borders.Enable = 1;
-                firstTable.AllowAutoFit = true;
-
-                foreach (Row row in firstTable.Rows)
+                // Image (if exists) - use relative/absolute path so Word can load it
+                if (!string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath))
                 {
-                    foreach (Cell cell in row.Cells)
+                    // We will ask Word to render the image centered and scaled to a percentage of the page
+                    int maxWidthPx = 200; // maximum pixel width allowed (reduced)
+                    int desiredPercent = 40; // percent of page width to request (reduced from 60)
+
+                    try
                     {
-
-                        //Header row  
-                        if (cell.RowIndex == 1)
+                        using (var img = Image.FromFile(imagePath))
                         {
-                            switch (cell.ColumnIndex)
-                            {
-                                case 1:
-                                    cell.Range.Text = "Sr.Id";
-                                    break;
-                                case 2: cell.Range.Text = "Date"; break;
-                                case 3: cell.Range.Text = "File"; break;
-                                case 4: cell.Range.Text = "Sq.Ft"; break;
-                                case 5: cell.Range.Text = "Quality"; break;
-                                case 6: cell.Range.Text = "Rate"; break;
-                                case 7: cell.Range.Text = "Qty"; break;
-                                case 8: cell.Range.Text = "Amt"; break;
-
-                                default:
-                                    break;
-                            }
-
-                            cell.Range.Font.Bold = 1;
-                            //cell.Width = 5;
-                            //other format properties goes here  
-                            cell.Range.Font.Name = "verdana";
-                            cell.Range.Font.Size = 8;
-                            //cell.Range.Font.ColorIndex = WdColorIndex.wdGray25;                              
-                            cell.Shading.BackgroundPatternColor = WdColor.wdColorGray25;
-                            //Center alignment for the Header cells  
-                            cell.VerticalAlignment = WdCellVerticalAlignment.wdCellAlignVerticalCenter;
-                            cell.Range.ParagraphFormat.Alignment = WdParagraphAlignment.wdAlignParagraphCenter;
-                            cell.Range.ParagraphFormat.SpaceAfter = 0.0f;
-                            // cell.SetWidth(4, WdRulerStyle.wdAdjustProportional);
-                            cell.BottomPadding = 0;
+                            int origW = img.Width;
+                            // Never request a max-width larger than the original image to avoid upscaling
+                            if (origW < maxWidthPx)
+                                maxWidthPx = origW;
                         }
-                        //Data row  
-                        else
-                        {
-                            if (cell.RowIndex == bill.Jobs.Count + 2)
-                            {
-                                if (cell.ColumnIndex == 4)
-                                {
-                                    cell.Range.Text = bill.TotalDimensions.ToString();
-                                }
-                                if (cell.ColumnIndex == 7)
-                                {
-                                    cell.Range.Text = bill.TotalQuantity.ToString();
-                                }
-                                if (cell.ColumnIndex == 8)
-                                {
-                                    cell.Range.Text = bill.TotalAmount.ToString();
-                                }
-                                cell.Shading.BackgroundPatternColor = WdColor.wdColorGray25;
-                                cell.Range.Paragraphs.SpaceAfter = 0.0f;
-                            }
-                            else
-                            {
-                                switch (cell.ColumnIndex)
-                                {
-                                    case 1:
-                                        cell.Range.Text = bill.Jobs[cell.RowIndex - 2].Id.ToString();
-                                        break;
-                                    case 2: cell.Range.Text = bill.Jobs[cell.RowIndex - 2].JobDate.ToString(); break;
-                                    case 3: cell.Range.Text = bill.Jobs[cell.RowIndex - 2].JobName.ToString(); break;
-                                    case 4: cell.Range.Text = bill.Jobs[cell.RowIndex - 2].Dimension.ToString(); break;
-                                    case 5: cell.Range.Text = bill.Jobs[cell.RowIndex - 2].Quality.Quality.ToString(); break;
-                                    case 6: cell.Range.Text = bill.Jobs[cell.RowIndex - 2].Rate.ToString(); break;
-                                    case 7: cell.Range.Text = bill.Jobs[cell.RowIndex - 2].Quantity.ToString(); break;
-                                    case 8: cell.Range.Text = bill.Jobs[cell.RowIndex - 2].Amount.ToString(); break;
+                    }
+                    catch
+                    {
+                        // ignore, keep defaults
+                    }
 
-                                    default:
-                                        break;
+                    // Use file URI so Word can resolve it. Use CSS to center and fit the image.
+                    string imgUri = System.Uri.EscapeUriString(imagePath.Replace('\\', '/'));
+                    sb.AppendFormat("<div><img class=\"logo\" src=\"file:///{0}\" alt=\"Logo\" style=\"width:{1}%;max-width:{2}px;height:auto;\"/></div>", imgUri, desiredPercent, maxWidthPx);
+                    sb.AppendLine();
+                }
 
-                                }
-                                cell.VerticalAlignment = WdCellVerticalAlignment.wdCellAlignVerticalCenter;
-                                cell.Range.Columns.AutoFit();
-                                cell.BottomPadding = 0;
-                                cell.Range.Rows.Alignment = WdRowAlignment.wdAlignRowCenter;
-                                cell.Range.Paragraphs.SpaceAfter = 0.0f;
-                                //cell.Range.ParagraphFormat.Alignment = WdParagraphAlignment.wdAlignParagraphRight;
+                string fromDate = bill.FromDate?.Split(' ')[0] ?? string.Empty;
+                string toDate = bill.ToDate?.Split(' ')[0] ?? string.Empty;
+                sb.AppendFormat("<p><strong>Name:</strong> {0} &nbsp;&nbsp; <strong>Date:</strong> {1} - {2}</p>", System.Net.WebUtility.HtmlEncode(bill.CustomerName), System.Net.WebUtility.HtmlEncode(fromDate), System.Net.WebUtility.HtmlEncode(toDate));
 
-                                //cell.SetWidth(4, WdRulerStyle.wdAdjustProportional);
-                            }
-                        }
+                // Table header
+                sb.AppendLine("<table>");
+                sb.AppendLine("<tr>");
+                sb.AppendLine("<th class=\"header\">Sr.Id</th>");
+                sb.AppendLine("<th class=\"header\">Date</th>");
+                sb.AppendLine("<th class=\"header\">File</th>");
+                sb.AppendLine("<th class=\"header\">Sq.Ft</th>");
+                sb.AppendLine("<th class=\"header\">Quality</th>");
+                sb.AppendLine("<th class=\"header\">Rate</th>");
+                sb.AppendLine("<th class=\"header\">Qty</th>");
+                sb.AppendLine("<th class=\"header\">Amt</th>");
+                sb.AppendLine("</tr>");
+
+                // Data rows
+                if (bill.Jobs != null)
+                {
+                    for (int i = 0; i < bill.Jobs.Count; i++)
+                    {
+                        var job = bill.Jobs[i];
+                        sb.AppendLine("<tr>");
+                        sb.AppendFormat("<td>{0}</td>", System.Net.WebUtility.HtmlEncode(job.Id?.ToString() ?? string.Empty));
+                        sb.AppendFormat("<td>{0}</td>", System.Net.WebUtility.HtmlEncode(job.JobDate ?? string.Empty));
+                        sb.AppendFormat("<td>{0}</td>", System.Net.WebUtility.HtmlEncode(job.JobName ?? string.Empty));
+                        sb.AppendFormat("<td>{0}</td>", job.Dimension.ToString());
+                        sb.AppendFormat("<td>{0}</td>", System.Net.WebUtility.HtmlEncode(job.Quality?.Quality ?? string.Empty));
+                        sb.AppendFormat("<td>{0}</td>", job.Rate.ToString());
+                        sb.AppendFormat("<td>{0}</td>", job.Quantity.ToString());
+                        sb.AppendFormat("<td>{0}</td>", job.Amount.ToString());
+                        sb.AppendLine("</tr>");
                     }
                 }
 
-                //Save the document  
-                object filename = ConfigurationManager.AppSettings.Get("billSavePath") + "\\" + bill.CustomerName + " " + Guid.NewGuid().ToString() + ".docx";
+                // Total row
+                sb.AppendLine("<tr>");
+                sb.AppendLine("<td colspan=\"3\" class=\"total\"></td>");
+                sb.AppendFormat("<td class=\"total\">{0}</td>", bill.TotalDimensions.ToString());
+                sb.AppendLine("<td class=\"total\"></td>");
+                sb.AppendLine("<td class=\"total\"></td>");
+                sb.AppendFormat("<td class=\"total\">{0}</td>", bill.TotalQuantity.ToString());
+                sb.AppendFormat("<td class=\"total\">{0}</td>", bill.TotalAmount.ToString());
+                sb.AppendLine("</tr>");
 
-                document.SaveAs2(ref filename);
+                sb.AppendLine("</table>");
 
-                document.Close(ref missing, ref missing, ref missing);
-                document = null;
-                winword.Quit(ref missing, ref missing, ref missing);
-                winword = null;
-                MessageBox.Show("Bill Created successfully !");
+                // Footer text
+                sb.AppendLine("<div style=\"text-align:center;margin-top:20px;color:#800;\">Ashoka Graphics</div>");
+
+                sb.AppendLine("</body>");
+                sb.AppendLine("</html>");
+
+                File.WriteAllText(fileName, sb.ToString(), Encoding.UTF8);
+
+                MessageBox.Show("Bill Created successfully !\nSaved to: " + fileName);
                 this.PrintEnabled = true;
             }
             catch (Exception ex)
